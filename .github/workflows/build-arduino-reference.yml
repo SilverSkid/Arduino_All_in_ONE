@@ -1,0 +1,57 @@
+name: Build Arduino Reference PDF
+on:
+  workflow_dispatch:
+    inputs:
+      rev:
+        description: 'Git ref to build (branch/tag/commit). Default: main'
+        required: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.2'
+
+      - name: Install Asciidoctor PDF
+        run: gem install --no-document asciidoctor-pdf
+
+      - name: Clone Arduino reference (English)
+        run: |
+          git clone --depth=1 https://github.com/arduino/reference-en.git
+          cd reference-en
+          if [ -n "${{ github.event.inputs.rev }}" ]; then
+            git fetch --depth=1 origin "${{ github.event.inputs.rev }}" || git fetch origin "${{ github.event.inputs.rev }}"
+            git checkout "${{ github.event.inputs.rev }}"
+          fi
+
+      - name: Generate master.adoc (Structure + Variables + Functions)
+        run: |
+          cd reference-en/Language
+          cat > master.adoc <<'EOF'
+          = Arduino Language Reference (Unofficial, compiled)
+          :doctype: book
+          :toc: left
+          :sectnums:
+          :sectanchors:
+          :icons: font
+          :revremark: Built from https://github.com/arduino/reference-en (CC BY-SA)
+          EOF
+          # find all .adoc files in the three folders, stable order
+          find Structure Variables Functions -type f -name '*.adoc' \
+            | sort -f \
+            | sed 's/^/include::/; s/$/[]/' >> master.adoc
+
+      - name: Build PDF
+        run: |
+          cd reference-en/Language
+          asciidoctor-pdf -S unsafe master.adoc -o ../Arduino-Language-Reference-unofficial.pdf
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Arduino-Language-Reference-PDF
+          path: reference-en/Arduino-Language-Reference-unofficial.pdf
